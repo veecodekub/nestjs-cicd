@@ -15,7 +15,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { Post as PostModel, User as UserModel } from 'generated/prisma/client';
+import {
+  Post as PostModel,
+  User as UserModel,
+} from '../generated/prisma/client';
 import { CreateDraftDto } from './dto/create-draft.dto';
 import { SignupUserDto } from './dto/signup-user.dto';
 import { PostsService } from './post.service';
