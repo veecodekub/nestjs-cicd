@@ -9,6 +9,8 @@ RUN npm ci
 
 COPY . .
 
+RUN npx prisma generate
+
 RUN npm run build
 
 # Base image for production execution
@@ -22,6 +24,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY --from=builder /usr/src/app/dist ./dist
+COPY --from=builder /usr/src/app/generated ./generated
 
 EXPOSE 3000
 
