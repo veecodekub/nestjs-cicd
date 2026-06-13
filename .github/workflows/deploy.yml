@@ -114,12 +114,14 @@ jobs:
 
       - name: Deploy to SSH server
         uses: appleboy/ssh-action@master
+        env:
+          DATABASE_URL: ${{ github.ref == 'refs/heads/main' && secrets.DATABASE_URL_PROD || github.ref == 'refs/heads/test' && secrets.DATABASE_URL_TEST || secrets.DATABASE_URL }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
-          envs: CONTAINER_NAME,PORT,ENV_NAME,REGISTRY,IMAGE_NAME,IMAGE_TAG
+          envs: CONTAINER_NAME,PORT,ENV_NAME,REGISTRY,IMAGE_NAME,IMAGE_TAG,DATABASE_URL
           script: |
             set -e
             IMAGE_FULL_NAME="$REGISTRY/$IMAGE_NAME"
@@ -137,6 +139,7 @@ jobs:
               --name "$CONTAINER_NAME" \
               --restart unless-stopped \
               -p "$PORT:3000" \
+              -e DATABASE_URL="$DATABASE_URL" \
               "$IMAGE_FULL_NAME:$IMAGE_TAG"
 
             echo "Deployment to $ENV_NAME complete!"
