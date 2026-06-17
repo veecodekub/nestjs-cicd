@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { PostsService } from './post.service';
 import { UsersService } from './user.service';
+import { PrismaService } from './prisma.service';
+import { ServiceUnavailableException } from '@nestjs/common';
 
 describe('AppController', () => {
   let appController: AppController;
@@ -20,6 +22,10 @@ describe('AppController', () => {
     deletePost: jest.fn(),
   };
 
+  const mockPrismaService = {
+    $queryRaw: jest.fn(),
+  };
+
   beforeEach(async () => {
     const app: TestingModule = await Test.createTestingModule({
       controllers: [AppController],
@@ -31,6 +37,10 @@ describe('AppController', () => {
         {
           provide: PostsService,
           useValue: mockPostsService,
+        },
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
         },
       ],
     }).compile();
@@ -190,6 +200,30 @@ describe('AppController', () => {
       const result = await appController.deletePost('1');
       expect(result).toEqual(mockDeletedPost);
       expect(postsService.deletePost).toHaveBeenCalledWith({ id: 1 });
+    });
+  });
+
+  describe('getHealth', () => {
+    it('should return UP when database is healthy', async () => {
+      mockPrismaService.$queryRaw.mockResolvedValue([1]);
+
+      const result = await appController.getHealth();
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'UP',
+          database: 'UP',
+        }),
+      );
+      expect(result.timestamp).toBeDefined();
+      expect(mockPrismaService.$queryRaw).toHaveBeenCalled();
+    });
+
+    it('should throw ServiceUnavailableException when database check fails', async () => {
+      mockPrismaService.$queryRaw.mockRejectedValue(new Error('Connection failed'));
+
+      await expect(appController.getHealth()).rejects.toThrow(
+        ServiceUnavailableException,
+      );
     });
   });
 });

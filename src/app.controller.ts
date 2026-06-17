@@ -6,7 +6,9 @@ import {
   Param,
   Post,
   Put,
+  ServiceUnavailableException,
   Version,
+  VERSION_NEUTRAL,
 } from '@nestjs/common';
 import {
   ApiBody,
@@ -22,6 +24,7 @@ import {
 import { CreateDraftDto } from './dto/create-draft.dto';
 import { SignupUserDto } from './dto/signup-user.dto';
 import { PostsService } from './post.service';
+import { PrismaService } from './prisma.service';
 import { UsersService } from './user.service';
 
 @ApiTags('Posts & Users')
@@ -30,7 +33,31 @@ export class AppController {
   constructor(
     private readonly userService: UsersService,
     private readonly postService: PostsService,
+    private readonly prismaService: PrismaService,
   ) {}
+
+  @Version(['1', VERSION_NEUTRAL])
+  @Get('health')
+  @ApiOperation({ summary: 'Check API and Database health status' })
+  @ApiResponse({ status: 200, description: 'API is healthy' })
+  @ApiResponse({ status: 503, description: 'API or database is unhealthy' })
+  async getHealth() {
+    try {
+      await this.prismaService.$queryRaw`SELECT 1`;
+      return {
+        status: 'UP',
+        database: 'UP',
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      throw new ServiceUnavailableException({
+        status: 'DOWN',
+        database: 'DOWN',
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
 
   @Version('1')
   @Get('post/:id')
