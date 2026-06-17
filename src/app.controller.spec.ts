@@ -3,12 +3,15 @@ import { AppController } from './app.controller';
 import { PostsService } from './post.service';
 import { UsersService } from './user.service';
 import { PrismaService } from './prisma.service';
+import { ConfigService } from '@nestjs/config';
 import { ServiceUnavailableException } from '@nestjs/common';
+import * as fs from 'fs';
 
 describe('AppController', () => {
   let appController: AppController;
   let usersService: UsersService;
   let postsService: PostsService;
+  let configService: ConfigService;
 
   const mockUsersService = {
     createUser: jest.fn(),
@@ -24,6 +27,10 @@ describe('AppController', () => {
 
   const mockPrismaService = {
     $queryRaw: jest.fn(),
+  };
+
+  const mockConfigService = {
+    get: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -42,12 +49,17 @@ describe('AppController', () => {
           provide: PrismaService,
           useValue: mockPrismaService,
         },
+        {
+          provide: ConfigService,
+          useValue: mockConfigService,
+        },
       ],
     }).compile();
 
     appController = app.get<AppController>(AppController);
     usersService = app.get<UsersService>(UsersService);
     postsService = app.get<PostsService>(PostsService);
+    configService = app.get<ConfigService>(ConfigService);
   });
 
   afterEach(() => {
@@ -203,25 +215,91 @@ describe('AppController', () => {
     });
   });
 
-  describe('getHealth', () => {
-    it('should return UP when database is healthy', async () => {
-      mockPrismaService.$queryRaw.mockResolvedValue([1]);
 
-      const result = await appController.getHealth();
+
+  describe('getLive', () => {
+    it('should return UP for liveness check', async () => {
+      const result = await appController.getLive();
       expect(result).toEqual(
         expect.objectContaining({
           status: 'UP',
-          database: 'UP',
         }),
       );
       expect(result.timestamp).toBeDefined();
-      expect(mockPrismaService.$queryRaw).toHaveBeenCalled();
+    });
+  });
+
+  describe('getReady', () => {
+    let readdirSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      readdirSpy = jest.spyOn(fs.promises, 'readdir');
     });
 
-    it('should throw ServiceUnavailableException when database check fails', async () => {
-      mockPrismaService.$queryRaw.mockRejectedValue(new Error('Connection failed'));
+    afterEach(() => {
+      readdirSpy.mockRestore();
+    });
 
-      await expect(appController.getHealth()).rejects.toThrow(
+    it('should return UP when config, db, and migrations are ready', async () => {
+      mockConfigService.get.mockReturnValue('postgresql://localhost:5432/db');
+      mockPrismaService.$queryRaw
+        .mockResolvedValueOnce([1]) // SELECT 1
+        .mockResolvedValueOnce([
+          { migration_name: '20260613144304_init', finished_at: new Date() },
+        ]); // _prisma_migrations query
+
+      readdirSpy.mockResolvedValue([
+        {
+          name: '20260613144304_init',
+          isDirectory: () => true,
+        } as any,
+      ]);
+
+      const result = await appController.getReady();
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: 'UP',
+          checks: {
+            database: 'UP',
+            configuration: 'UP',
+            migrations: 'UP',
+          },
+        }),
+      );
+      expect(result.timestamp).toBeDefined();
+    });
+
+    it('should throw 503 when config is missing', async () => {
+      mockConfigService.get.mockReturnValue(undefined);
+
+      await expect(appController.getReady()).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('should throw 503 when database connection fails', async () => {
+      mockConfigService.get.mockReturnValue('postgresql://localhost:5432/db');
+      mockPrismaService.$queryRaw.mockRejectedValueOnce(new Error('DB connection failed'));
+
+      await expect(appController.getReady()).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('should throw 503 when migrations are not applied', async () => {
+      mockConfigService.get.mockReturnValue('postgresql://localhost:5432/db');
+      mockPrismaService.$queryRaw
+        .mockResolvedValueOnce([1]) // SELECT 1
+        .mockResolvedValueOnce([]); // Empty _prisma_migrations
+
+      readdirSpy.mockResolvedValue([
+        {
+          name: '20260613144304_init',
+          isDirectory: () => true,
+        } as any,
+      ]);
+
+      await expect(appController.getReady()).rejects.toThrow(
         ServiceUnavailableException,
       );
     });

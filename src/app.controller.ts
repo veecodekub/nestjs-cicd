@@ -10,6 +10,7 @@ import {
   Version,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ApiBody,
   ApiOperation,
@@ -17,6 +18,8 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   Post as PostModel,
   User as UserModel,
@@ -34,29 +37,134 @@ export class AppController {
     private readonly userService: UsersService,
     private readonly postService: PostsService,
     private readonly prismaService: PrismaService,
+    private readonly configService: ConfigService,
   ) {}
 
   @Version(['1', VERSION_NEUTRAL])
-  @Get('health')
-  @ApiOperation({ summary: 'Check API and Database health status' })
-  @ApiResponse({ status: 200, description: 'API is healthy' })
-  @ApiResponse({ status: 503, description: 'API or database is unhealthy' })
-  async getHealth() {
+  @Get('health/live')
+  @ApiOperation({
+    summary: 'Liveness check: verifies process is not deadlocked',
+  })
+  @ApiResponse({ status: 200, description: 'Process is alive' })
+  async getLive() {
+    return {
+      status: 'UP',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Version(['1', VERSION_NEUTRAL])
+  @Get('health/ready')
+  @ApiOperation({
+    summary:
+      'Readiness check: verifies DB, configuration, and migrations are ready',
+  })
+  @ApiResponse({ status: 200, description: 'App is ready' })
+  @ApiResponse({ status: 503, description: 'App is not ready' })
+  async getReady() {
+    const checks = {
+      database: 'DOWN',
+      configuration: 'DOWN',
+      migrations: 'DOWN',
+    };
+    let hasError = false;
+    const errors: Record<string, string> = {};
+
+    // 1. Check Configuration
     try {
-      await this.prismaService.$queryRaw`SELECT 1`;
-      return {
-        status: 'UP',
-        database: 'UP',
-        timestamp: new Date().toISOString(),
-      };
+      const dbUrl = this.configService.get<string>('DATABASE_URL');
+      if (!dbUrl) {
+        throw new Error('DATABASE_URL environment variable is missing');
+      }
+      checks.configuration = 'UP';
     } catch (error) {
-      throw new ServiceUnavailableException({
-        status: 'DOWN',
-        database: 'DOWN',
-        error: error instanceof Error ? error.message : String(error),
-        timestamp: new Date().toISOString(),
-      });
+      hasError = true;
+      checks.configuration = 'DOWN';
+      errors.configuration =
+        error instanceof Error ? error.message : String(error);
     }
+
+    // 2. Check Database Connection
+    if (checks.configuration === 'UP') {
+      try {
+        await this.prismaService.$queryRaw`SELECT 1`;
+        checks.database = 'UP';
+      } catch (error) {
+        hasError = true;
+        checks.database = 'DOWN';
+        errors.database =
+          error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    // 3. Check Migrations Status
+    if (checks.database === 'UP') {
+      try {
+        const migrationsPath = path.join(process.cwd(), 'prisma', 'migrations');
+        let diskMigrations: string[] = [];
+        try {
+          const files = await fs.promises.readdir(migrationsPath, {
+            withFileTypes: true,
+          });
+          diskMigrations = files
+            .filter((file) => file.isDirectory())
+            .map((file) => file.name)
+            .sort();
+        } catch (err) {
+          // If directory doesn't exist or other read error, assume 0 disk migrations
+          diskMigrations = [];
+        }
+
+        let appliedMigrations: Array<{
+          migration_name: string;
+          finished_at: Date | null;
+        }> = [];
+        try {
+          appliedMigrations = await this.prismaService.$queryRaw<
+            Array<{ migration_name: string; finished_at: Date | null }>
+          >`SELECT migration_name, finished_at FROM _prisma_migrations`;
+        } catch (err) {
+          if (diskMigrations.length > 0) {
+            throw new Error(
+              `Migrations table '_prisma_migrations' does not exist, but ${diskMigrations.length} migration(s) found on disk.`,
+            );
+          }
+        }
+
+        if (diskMigrations.length > 0) {
+          const appliedNames = new Set(
+            appliedMigrations
+              .filter((m) => m.finished_at !== null)
+              .map((m) => m.migration_name),
+          );
+
+          const missing = diskMigrations.filter((m) => !appliedNames.has(m));
+          if (missing.length > 0) {
+            throw new Error(`Pending migrations: ${missing.join(', ')}`);
+          }
+        }
+
+        checks.migrations = 'UP';
+      } catch (error) {
+        hasError = true;
+        checks.migrations = 'DOWN';
+        errors.migrations =
+          error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    const response = {
+      status: hasError ? 'DOWN' : 'UP',
+      checks,
+      timestamp: new Date().toISOString(),
+      ...(hasError && { errors }),
+    };
+
+    if (hasError) {
+      throw new ServiceUnavailableException(response);
+    }
+
+    return response;
   }
 
   @Version('1')
