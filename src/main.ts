@@ -15,7 +15,7 @@ async function bootstrap() {
   const config = new DocumentBuilder()
     .setTitle('Nestjs CICD')
     .setDescription('The NESTJS API description')
-    .setVersion('1.0')
+    .setVersion('1.0.0')
     .addTag('nestjs-cicd')
     .build();
   const documentFactory = () => SwaggerModule.createDocument(app, config);
