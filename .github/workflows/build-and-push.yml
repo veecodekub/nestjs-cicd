@@ -67,6 +67,7 @@ jobs:
         outputs:
             image-digest: ${{ steps.build.outputs.digest }}
             image-version: ${{ steps.get_version.outputs.version }}
+            image-tag: ${{ steps.get_version.outputs.promotion_tag }}
         permissions:
             contents: read
             packages: write
@@ -79,7 +80,10 @@ jobs:
               id: get_version
               run: |
                   version=$(jq -r '.version' package.json)
+                  short_sha="${GITHUB_SHA::7}"
+                  promotion_tag="${GITHUB_REF_NAME}-${short_sha}"
                   echo "version=$version" >> $GITHUB_OUTPUT
+                  echo "promotion_tag=$promotion_tag" >> $GITHUB_OUTPUT
 
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v4
@@ -111,7 +115,7 @@ jobs:
                   build-args: |
                       APP_VERSION=${{ steps.get_version.outputs.version }}
                       GIT_SHA=${{ github.sha }}
-                      IMAGE_TAG=${{ steps.get_version.outputs.version }}
+                      IMAGE_TAG=${{ steps.get_version.outputs.promotion_tag }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
 
@@ -153,3 +157,14 @@ jobs:
               with:
                   name: nestjs-cicd-image-metadata
                   path: image-metadata.txt
+
+    create-prod-promotion-pr:
+        needs: build-and-push
+        if: github.event_name == 'push' && github.ref_name == 'main'
+        uses: ./.github/workflows/promote.yml
+        with:
+            image_digest: ${{ needs.build-and-push.outputs.image-digest }}
+            image_version: ${{ needs.build-and-push.outputs.image-tag }}
+            environment: prod
+        secrets:
+            INFRA_REPO_PAT: ${{ secrets.INFRA_REPO_PAT }}

@@ -18,6 +18,23 @@ on:
         type: choice
         options:
           - prod
+  workflow_call:
+    inputs:
+      image_digest:
+        description: Image digest to promote, for example sha256:abc...
+        required: true
+        type: string
+      image_version:
+        description: Human-readable image version/tag for traceability
+        required: true
+        type: string
+      environment:
+        description: Target environment overlay
+        required: true
+        type: string
+    secrets:
+      INFRA_REPO_PAT:
+        required: true
 
 permissions:
   contents: read
@@ -31,6 +48,7 @@ jobs:
         with:
           repository: veecodekub/veecodekub-infra
           token: ${{ secrets.INFRA_REPO_PAT }}
+          persist-credentials: false
 
       - name: Update NestJS image digest
         env:
