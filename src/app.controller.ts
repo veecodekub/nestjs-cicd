@@ -33,6 +33,8 @@ import { UsersService } from './user.service';
 @ApiTags('Posts & Users')
 @Controller()
 export class AppController {
+  private readonly startedAt = Date.now();
+
   constructor(
     private readonly userService: UsersService,
     private readonly postService: PostsService,
@@ -165,6 +167,26 @@ export class AppController {
     }
 
     return response;
+  }
+
+  @Version('1')
+  @Get('system/info')
+  @ApiOperation({
+    summary: 'Get safe runtime and release metadata for deployment checks',
+  })
+  @ApiResponse({ status: 200, description: 'System metadata returned' })
+  getSystemInfo() {
+    const uptimeSeconds = Math.floor((Date.now() - this.startedAt) / 1000);
+
+    return {
+      service: this.configService.get<string>('APP_NAME') ?? 'nestjs-cicd',
+      version: this.configService.get<string>('APP_VERSION') ?? 'unknown',
+      environment: this.configService.get<string>('NODE_ENV') ?? 'development',
+      gitSha: this.configService.get<string>('GIT_SHA') ?? 'unknown',
+      imageTag: this.configService.get<string>('IMAGE_TAG') ?? 'unknown',
+      uptimeSeconds,
+      timestamp: new Date().toISOString(),
+    };
   }
 
   @Version('1')

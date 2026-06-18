@@ -18,6 +18,15 @@ FROM node:24-alpine
 
 WORKDIR /usr/src/app
 
+ARG APP_VERSION=unknown
+ARG GIT_SHA=unknown
+ARG IMAGE_TAG=unknown
+
+ENV APP_NAME=nestjs-cicd
+ENV APP_VERSION=${APP_VERSION}
+ENV GIT_SHA=${GIT_SHA}
+ENV IMAGE_TAG=${IMAGE_TAG}
+
 COPY package*.json ./
 
 # Install only production dependencies
