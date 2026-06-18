@@ -108,6 +108,10 @@ jobs:
                   push: true
                   tags: ${{ steps.meta.outputs.tags }}
                   labels: ${{ steps.meta.outputs.labels }}
+                  build-args: |
+                      APP_VERSION=${{ steps.get_version.outputs.version }}
+                      GIT_SHA=${{ github.sha }}
+                      IMAGE_TAG=${{ steps.get_version.outputs.version }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
 

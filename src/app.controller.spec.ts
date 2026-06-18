@@ -302,4 +302,34 @@ describe('AppController', () => {
       );
     });
   });
+
+  describe('getSystemInfo', () => {
+    it('should return safe runtime and release metadata', () => {
+      mockConfigService.get.mockImplementation((key: string) => {
+        const values: Record<string, string> = {
+          APP_NAME: 'nestjs-cicd',
+          APP_VERSION: '0.0.2',
+          NODE_ENV: 'production',
+          GIT_SHA: 'abc1234',
+          IMAGE_TAG: 'test-abc1234',
+        };
+
+        return values[key];
+      });
+
+      const result = appController.getSystemInfo();
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          service: 'nestjs-cicd',
+          version: '0.0.2',
+          environment: 'production',
+          gitSha: 'abc1234',
+          imageTag: 'test-abc1234',
+        }),
+      );
+      expect(result.uptimeSeconds).toEqual(expect.any(Number));
+      expect(result.timestamp).toBeDefined();
+    });
+  });
 });
