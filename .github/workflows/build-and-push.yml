@@ -7,6 +7,10 @@ on:
             - test
     workflow_dispatch:
 
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
 env:
     REGISTRY: ghcr.io
     IMAGE_NAME: ${{ github.repository }}
@@ -14,6 +18,8 @@ env:
 jobs:
     test:
         runs-on: ubuntu-latest
+        permissions:
+            contents: read
 
         steps:
             - name: Checkout code
@@ -31,8 +37,17 @@ jobs:
             - name: Generate Prisma Client
               run: npx prisma generate
 
+            - name: Run lint
+              run: npm run lint
+
+            - name: Run build
+              run: npm run build
+
             - name: Run tests
               run: npm test
+
+            - name: Audit dependencies
+              run: npm audit --audit-level=high
 
             - name: Generate coverage report
               run: npm run test:cov
@@ -49,6 +64,9 @@ jobs:
     build-and-push:
         needs: test
         runs-on: ubuntu-latest
+        outputs:
+            image-digest: ${{ steps.build.outputs.digest }}
+            image-version: ${{ steps.get_version.outputs.version }}
         permissions:
             contents: read
             packages: write
@@ -83,6 +101,7 @@ jobs:
                       type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
                   
             - name: Build and push Docker image
+              id: build
               uses: docker/build-push-action@v5
               with:
                   context: .
@@ -91,3 +110,42 @@ jobs:
                   labels: ${{ steps.meta.outputs.labels }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
+
+            - name: Scan image vulnerabilities
+              uses: aquasecurity/trivy-action@0.24.0
+              with:
+                  image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+                  vuln-type: os,library
+                  severity: HIGH,CRITICAL
+                  ignore-unfixed: true
+                  exit-code: "1"
+
+            - name: Generate SBOM
+              uses: aquasecurity/trivy-action@0.24.0
+              with:
+                  image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+                  format: cyclonedx
+                  output: nestjs-cicd-sbom.cdx.json
+                  exit-code: "0"
+
+            - name: Upload SBOM
+              uses: actions/upload-artifact@v4
+              with:
+                  name: nestjs-cicd-sbom
+                  path: nestjs-cicd-sbom.cdx.json
+
+            - name: Write image metadata
+              run: |
+                  {
+                    echo "image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+                    echo "version=${{ steps.get_version.outputs.version }}"
+                    echo "digest=${{ steps.build.outputs.digest }}"
+                    echo "ref=${{ github.ref_name }}"
+                    echo "sha=${{ github.sha }}"
+                  } > image-metadata.txt
+
+            - name: Upload image metadata
+              uses: actions/upload-artifact@v4
+              with:
+                  name: nestjs-cicd-image-metadata
+                  path: image-metadata.txt

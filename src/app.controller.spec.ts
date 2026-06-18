@@ -11,7 +11,6 @@ describe('AppController', () => {
   let appController: AppController;
   let usersService: UsersService;
   let postsService: PostsService;
-  let configService: ConfigService;
 
   const mockUsersService = {
     createUser: jest.fn(),
@@ -59,7 +58,6 @@ describe('AppController', () => {
     appController = app.get<AppController>(AppController);
     usersService = app.get<UsersService>(UsersService);
     postsService = app.get<PostsService>(PostsService);
-    configService = app.get<ConfigService>(ConfigService);
   });
 
   afterEach(() => {
@@ -215,8 +213,6 @@ describe('AppController', () => {
     });
   });
 
-
-
   describe('getLive', () => {
     it('should return UP for liveness check', async () => {
       const result = await appController.getLive();
@@ -279,7 +275,9 @@ describe('AppController', () => {
 
     it('should throw 503 when database connection fails', async () => {
       mockConfigService.get.mockReturnValue('postgresql://localhost:5432/db');
-      mockPrismaService.$queryRaw.mockRejectedValueOnce(new Error('DB connection failed'));
+      mockPrismaService.$queryRaw.mockRejectedValueOnce(
+        new Error('DB connection failed'),
+      );
 
       await expect(appController.getReady()).rejects.toThrow(
         ServiceUnavailableException,

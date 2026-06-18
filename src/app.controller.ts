@@ -110,7 +110,7 @@ export class AppController {
             .filter((file) => file.isDirectory())
             .map((file) => file.name)
             .sort();
-        } catch (err) {
+        } catch {
           // If directory doesn't exist or other read error, assume 0 disk migrations
           diskMigrations = [];
         }
@@ -123,7 +123,7 @@ export class AppController {
           appliedMigrations = await this.prismaService.$queryRaw<
             Array<{ migration_name: string; finished_at: Date | null }>
           >`SELECT migration_name, finished_at FROM _prisma_migrations`;
-        } catch (err) {
+        } catch {
           if (diskMigrations.length > 0) {
             throw new Error(
               `Migrations table '_prisma_migrations' does not exist, but ${diskMigrations.length} migration(s) found on disk.`,
