@@ -59,7 +59,7 @@ jobs:
           NODE
 
       - name: Create promotion pull request
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.INFRA_REPO_PAT }}
           branch: promote/nestjs-${{ inputs.environment }}-${{ inputs.image_version }}
