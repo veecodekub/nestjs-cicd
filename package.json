@@ -1,8 +1,8 @@
 {
     "name": "nestjs-cicd",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "description": "",
-    "author": "",
+    "author": "veecodekub.dev",
     "private": true,
     "license": "UNLICENSED",
     "scripts": {
@@ -12,7 +12,8 @@
         "start:dev": "nest start --watch",
         "start:debug": "nest start --debug --watch",
         "start:prod": "node dist/src/main",
-        "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+        "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+        "lint:fix": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
         "test": "jest",
         "test:watch": "jest --watch",
         "test:cov": "jest --coverage",
@@ -71,5 +72,8 @@
         ],
         "coverageDirectory": "../coverage",
         "testEnvironment": "node"
+    },
+    "overrides": {
+        "multer": "2.2.0"
     }
 }
